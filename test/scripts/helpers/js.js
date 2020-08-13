@@ -10,8 +10,6 @@ describe('js', () => {
     config: hexo.config
   };
 
-  ctx.url_for = require('../../../lib/plugins/helper/url_for').bind(ctx);
-
   const js = require('../../../lib/plugins/helper/js').bind(ctx);
 
   function assertResult(result, expected) {
@@ -44,6 +42,8 @@ describe('js', () => {
   });
 
   it('an array', () => {
+    assertResult(js(['//hexo.io/script.js']), '//hexo.io/script.js');
+
     assertResult(js(['foo', 'bar', 'baz']), ['/foo.js', '/bar.js', '/baz.js']);
   });
 
@@ -62,6 +62,7 @@ describe('js', () => {
   it('an object', () => {
     assertResult(js({src: 'script.js'}), {src: '/script.js'});
     assertResult(js({src: '/script.js'}), {src: '/script.js'});
+    assertResult(js({src: 'script'}), {src: '/script.js'});
     assertResult(js({src: '/script.js', foo: 'bar'}), {src: '/script.js', foo: 'bar'});
   });
 

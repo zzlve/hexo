@@ -183,14 +183,14 @@ describe('generate', () => {
       // Add some source files
       writeFile(join(hexo.theme_dir, 'source', 'a.txt'), 'a'),
       writeFile(join(hexo.theme_dir, 'source', 'b.txt'), 'b'),
-      writeFile(join(hexo.theme_dir, 'source', 'c.swig'), 'c')
+      writeFile(join(hexo.theme_dir, 'source', 'c.njk'), 'c')
     ]);
     await generate();
 
     // Update source file
     await Promise.all([
       writeFile(join(hexo.theme_dir, 'source', 'b.txt'), 'bb'),
-      writeFile(join(hexo.theme_dir, 'source', 'c.swig'), 'cc')
+      writeFile(join(hexo.theme_dir, 'source', 'c.njk'), 'cc')
     ]);
 
     // Generate again
@@ -252,14 +252,12 @@ describe('generate', () => {
       ]
     );
 
-    const errorCallback = spy(err => {
-      err.should.have.property('message', 'Testing unhandled exception');
-    });
-
     await writeFile(join(hexo.theme_dir, 'layout', 'post.err'), 'post');
 
-    return generate({ bail: true }).catch(errorCallback).finally(() => {
-      errorCallback.calledOnce.should.be.true;
+    return generate({ bail: true }).then(() => {
+      should.fail('Return value must be rejected');
+    }, err => {
+      err.should.property('message', 'Testing unhandled exception');
     });
   });
 
@@ -285,6 +283,7 @@ describe('generate - watch (delete)', () => {
     const exist = await exists(hexo.base_dir);
     if (exist) {
       await emptyDir(hexo.base_dir);
+      await Promise.delay(500);
       await rmdir(hexo.base_dir);
     }
   });
@@ -320,7 +319,7 @@ describe('generate - watch (delete)', () => {
     await testGenerate({ watch: true });
 
     await unlink(join(hexo.source_dir, 'test.txt'));
-    await Promise.delay(300);
+    await Promise.delay(500);
 
     const exist = await exists(join(hexo.public_dir, 'test.txt'));
     exist.should.be.false;

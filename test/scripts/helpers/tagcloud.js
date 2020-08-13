@@ -12,8 +12,6 @@ describe('tagcloud', () => {
     config: hexo.config
   };
 
-  ctx.url_for = require('../../../lib/plugins/helper/url_for').bind(ctx);
-
   const tagcloud = require('../../../lib/plugins/helper/tagcloud').bind(ctx);
 
   before(async () => {
@@ -45,6 +43,18 @@ describe('tagcloud', () => {
       '<a href="/tags/cde/" style="font-size: 16.67px;">cde</a>',
       '<a href="/tags/def/" style="font-size: 10px;">def</a>'
     ].join(' '));
+  });
+
+  it('no tags', async () => {
+    const hexo = new Hexo(__dirname);
+    await hexo.init();
+    hexo.locals.invalidate();
+    hexo.site = hexo.locals.toObject();
+    const tagcloud = require('../../../lib/plugins/helper/tagcloud').bind(hexo);
+
+    const result = tagcloud();
+
+    result.should.eql('');
   });
 
   it('specified collection', () => {
@@ -266,5 +276,18 @@ describe('tagcloud', () => {
       '<a href="/tags/cde/" style="font-size: 16.67px;">cde</a>',
       '<a href="/tags/def/" style="font-size: 10px;">def</a>'
     ].join(', '));
+  });
+
+  it('class name', () => {
+    const result = tagcloud({
+      class: 'tag-cloud'
+    });
+
+    result.should.eql([
+      '<a href="/tags/abc/" style="font-size: 13.33px;" class="tag-cloud-3">abc</a>',
+      '<a href="/tags/bcd/" style="font-size: 20px;" class="tag-cloud-10">bcd</a>',
+      '<a href="/tags/cde/" style="font-size: 16.67px;" class="tag-cloud-7">cde</a>',
+      '<a href="/tags/def/" style="font-size: 10px;" class="tag-cloud-0">def</a>'
+    ].join(' '));
   });
 });

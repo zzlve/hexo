@@ -10,8 +10,6 @@ describe('list_tags', () => {
     config: hexo.config
   };
 
-  ctx.url_for = require('../../../lib/plugins/helper/url_for').bind(ctx);
-
   const listTags = require('../../../lib/plugins/helper/list_tags').bind(ctx);
 
   before(async () => {
@@ -95,6 +93,25 @@ describe('list_tags', () => {
       '<li class="test-list-item"><a class="test-list-link" href="/tags/bar/" rel="tag">bar</a><span class="test-list-count">1</span></li>',
       '<li class="test-list-item"><a class="test-list-link" href="/tags/baz/" rel="tag">baz</a><span class="test-list-count">2</span></li>',
       '<li class="test-list-item"><a class="test-list-link" href="/tags/foo/" rel="tag">foo</a><span class="test-list-count">1</span></li>',
+      '</ul>'
+    ].join(''));
+  });
+
+  it('custom class', () => {
+    const result = listTags({
+      class: {
+        ul: 'lorem',
+        li: 'ipsum',
+        a: 'tempor',
+        count: 'dolor'
+      }
+    });
+
+    result.should.eql([
+      '<ul class="lorem" itemprop="keywords">',
+      '<li class="ipsum"><a class="tempor" href="/tags/bar/" rel="tag">bar</a><span class="dolor">1</span></li>',
+      '<li class="ipsum"><a class="tempor" href="/tags/baz/" rel="tag">baz</a><span class="dolor">2</span></li>',
+      '<li class="ipsum"><a class="tempor" href="/tags/foo/" rel="tag">foo</a><span class="dolor">1</span></li>',
       '</ul>'
     ].join(''));
   });

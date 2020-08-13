@@ -1,7 +1,6 @@
 'use strict';
 
-const { stub, match } = require('sinon');
-const { expect } = require('chai');
+const { stub, assert: sinonAssert } = require('sinon');
 
 describe('Console list', () => {
   const Hexo = require('../../../lib/hexo');
@@ -20,36 +19,35 @@ describe('Console list', () => {
 
   it('no post', () => {
     listPosts();
-    expect(logStub.calledWith(match('Date'))).be.true;
-    expect(logStub.calledWith(match('Title'))).be.true;
-    expect(logStub.calledWith(match('Path'))).be.true;
-    expect(logStub.calledWith(match('Category'))).be.true;
-    expect(logStub.calledWith(match('Tags'))).be.true;
-    expect(logStub.calledWith(match('No posts.'))).be.true;
+    sinonAssert.calledWithMatch(logStub, 'Date');
+    sinonAssert.calledWithMatch(logStub, 'Title');
+    sinonAssert.calledWithMatch(logStub, 'Path');
+    sinonAssert.calledWithMatch(logStub, 'Category');
+    sinonAssert.calledWithMatch(logStub, 'Tags');
+    sinonAssert.calledWithMatch(logStub, 'No posts.');
   });
 
-  it('post', () => {
+  it('post', async () => {
     const posts = [
       {source: 'foo', slug: 'foo', title: 'Its', date: 1e8},
       {source: 'bar', slug: 'bar', title: 'Math', date: 1e8 + 1},
       {source: 'baz', slug: 'baz', title: 'Dude', date: 1e8 - 1}
     ];
-    return hexo.init()
-      .then(() => Post.insert(posts)).then(() => {
-        hexo.locals.invalidate();
-      })
-      .then(() => {
-        listPosts();
-        expect(logStub.calledWith(match('Date'))).be.true;
-        expect(logStub.calledWith(match('Title'))).be.true;
-        expect(logStub.calledWith(match('Path'))).be.true;
-        expect(logStub.calledWith(match('Category'))).be.true;
-        expect(logStub.calledWith(match('Tags'))).be.true;
-        for (let i = 0; i < posts.length; i++) {
-          expect(logStub.calledWith(match(posts[i].source))).be.true;
-          expect(logStub.calledWith(match(posts[i].slug))).be.true;
-          expect(logStub.calledWith(match(posts[i].title))).be.true;
-        }
-      });
+
+    await hexo.init();
+    await Post.insert(posts);
+    await hexo.locals.invalidate();
+
+    listPosts();
+    sinonAssert.calledWithMatch(logStub, 'Date');
+    sinonAssert.calledWithMatch(logStub, 'Title');
+    sinonAssert.calledWithMatch(logStub, 'Path');
+    sinonAssert.calledWithMatch(logStub, 'Category');
+    sinonAssert.calledWithMatch(logStub, 'Tags');
+    for (let i = 0; i < posts.length; i++) {
+      sinonAssert.calledWithMatch(logStub, posts[i].source);
+      sinonAssert.calledWithMatch(logStub, posts[i].slug);
+      sinonAssert.calledWithMatch(logStub, posts[i].title);
+    }
   });
 });

@@ -2,7 +2,7 @@
 
 const { exists, mkdirs, readFile, rmdir, writeFile } = require('hexo-fs');
 const { join } = require('path');
-const { spy, stub, match } = require('sinon');
+const { spy, stub, assert: sinonAssert } = require('sinon');
 
 describe('deploy', () => {
   const Hexo = require('../../../lib/hexo');
@@ -16,7 +16,7 @@ describe('deploy', () => {
 
   beforeEach(() => {
     hexo.config.deploy = { type: 'foo' };
-    hexo.extend.deployer.register('foo', () => {});
+    hexo.extend.deployer.register('foo', () => { });
   });
 
   after(() => rmdir(hexo.base_dir));
@@ -24,14 +24,18 @@ describe('deploy', () => {
   it('no deploy config', () => {
     delete hexo.config.deploy;
 
-    const _stub = stub(console, 'log');
+    const logStub = stub(console, 'log');
 
     try {
       should.not.exist(deploy({ test: true }));
-      _stub.calledWith(match('You should configure deployment settings in _config.yml first!')).should.eql(true);
     } finally {
-      _stub.restore();
+      logStub.restore();
     }
+
+    sinonAssert.calledWithMatch(
+      logStub,
+      'You should configure deployment settings in _config.yml first!'
+    );
   });
 
   it('single deploy setting', async () => {
@@ -40,14 +44,7 @@ describe('deploy', () => {
       foo: 'bar'
     };
 
-    const deployer = spy(args => {
-      args.should.eql({
-        type: 'foo',
-        foo: 'foo',
-        bar: 'bar'
-      });
-    });
-
+    const deployer = spy();
     const beforeListener = spy();
     const afterListener = spy();
 
@@ -56,42 +53,64 @@ describe('deploy', () => {
     hexo.extend.deployer.register('foo', deployer);
 
     await deploy({ foo: 'foo', bar: 'bar' });
-    deployer.calledOnce.should.eql(true);
-    beforeListener.calledOnce.should.eql(true);
-    afterListener.calledOnce.should.eql(true);
+    deployer.calledOnce.should.be.true;
+    beforeListener.calledOnce.should.be.true;
+    afterListener.calledOnce.should.be.true;
+
+    sinonAssert.calledWith(deployer, {
+      type: 'foo',
+      foo: 'foo',
+      bar: 'bar'
+    });
   });
 
   it('multiple deploy setting', async () => {
-    const deployer1 = spy(args => {
-      args.should.eql({
-        type: 'foo',
-        foo: 'foo',
-        test: true
-      });
-    });
-
-    const deployer2 = spy(args => {
-      args.should.eql({
-        type: 'bar',
-        bar: 'bar',
-        test: true
-      });
-    });
+    const deployer1 = spy();
+    const deployer2 = spy();
 
     hexo.config.deploy = [
-      {type: 'foo', foo: 'foo'},
-      {type: 'bar', bar: 'bar'}
+      { type: 'foo', foo: 'foo' },
+      { type: 'bar', bar: 'bar' }
     ];
 
     hexo.extend.deployer.register('foo', deployer1);
     hexo.extend.deployer.register('bar', deployer2);
 
     await deploy({ test: true });
-    deployer1.calledOnce.should.eql(true);
-    deployer2.calledOnce.should.eql(true);
+    deployer1.calledOnce.should.be.true;
+    deployer2.calledOnce.should.be.true;
+
+    sinonAssert.calledWith(deployer1, {
+      type: 'foo',
+      foo: 'foo',
+      test: true
+    });
+    sinonAssert.calledWith(deployer2, {
+      type: 'bar',
+      bar: 'bar',
+      test: true
+    });
   });
 
-  // it('deployer not found'); missing-unit-test
+  it('deployer not found', async () => {
+    const logSpy = spy();
+    const hexo = new Hexo(join(__dirname, 'deploy_test'));
+    hexo.log.error = logSpy;
+
+    const deploy = require('../../../lib/plugins/console/deploy').bind(hexo);
+
+    hexo.extend.deployer.register('baz', () => { });
+    hexo.config.deploy = {
+      type: 'foo',
+      foo: 'bar'
+    };
+
+    await deploy({});
+
+    logSpy.called.should.be.true;
+    logSpy.args[0][0].should.contains('Deployer not found: %s');
+    logSpy.args[0][1].should.contains('foo');
+  });
 
   it('generate', async () => {
     await writeFile(join(hexo.source_dir, 'test.txt'), 'test');
@@ -108,6 +127,6 @@ describe('deploy', () => {
     await deploy({});
     const exist = await exists(hexo.public_dir);
 
-    exist.should.eql(true);
+    exist.should.be.true;
   });
 });

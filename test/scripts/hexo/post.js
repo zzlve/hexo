@@ -4,10 +4,11 @@ const { join } = require('path');
 const moment = require('moment');
 const Promise = require('bluebird');
 const { readFile, mkdirs, unlink, rmdir, writeFile, exists, stat, listDir } = require('hexo-fs');
-const { highlight } = require('hexo-util');
+const { highlight, escapeHTML } = require('hexo-util');
 const { spy, useFakeTimers } = require('sinon');
-const frontMatter = require('hexo-front-matter');
+const { parse: yfm } = require('hexo-front-matter');
 const fixture = require('../../fixtures/post_render');
+const escapeSwigTag = str => str.replace(/{/g, '&#123;').replace(/}/g, '&#125;');
 
 describe('Post', () => {
   const Hexo = require('../../../lib/hexo');
@@ -19,7 +20,7 @@ describe('Post', () => {
   before(() => {
     clock = useFakeTimers(now);
 
-    return mkdirs(hexo.base_dir, () => hexo.init()).then(() => // Load marked renderer for testing
+    return mkdirs(hexo.base_dir).then(() => hexo.init()).then(() => // Load marked renderer for testing
       hexo.loadPlugin(require.resolve('hexo-renderer-marked'))).then(() => hexo.scaffold.set('post', [
       '---',
       'title: {{ title }}',
@@ -225,6 +226,23 @@ describe('Post', () => {
     });
   });
 
+  it('create() - page', () => {
+    const path = join(hexo.source_dir, 'Hello-World/index.md');
+    hexo.config.post_asset_folder = true;
+    return post.create({
+      title: 'Hello World',
+      layout: 'page'
+    }).then(post => {
+      post.path.should.eql(path);
+      return stat(join(hexo.source_dir, 'Hello-World/index'));
+    }).catch(err => {
+      err.code.should.eql('ENOENT');
+    }).finally(() => {
+      hexo.config.post_asset_folder = false;
+      unlink(path);
+    });
+  });
+
   it('create() - follow the separator style in the scaffold', () => {
     const scaffold = [
       '---',
@@ -327,7 +345,7 @@ describe('Post', () => {
     });
   });
 
-  it('create() - with callback', () => {
+  it('create() - with callback', done => {
     const path = join(hexo.source_dir, '_posts', 'Hello-World.md');
     const date = moment(now);
 
@@ -339,19 +357,29 @@ describe('Post', () => {
       '---'
     ].join('\n') + '\n';
 
-    const callback = spy(post => {
-      post.path.should.eql(path);
-      post.content.should.eql(content);
-    });
-
-    return post.create({
-      title: 'Hello World'
-    }, callback).then(post => {
-      callback.calledOnce.should.be.true;
-      return readFile(path);
-    }).then(data => {
-      data.should.eql(content);
-      return unlink(path);
+    post.create({ title: 'Hello World' }, (err, post) => {
+      if (err) {
+        done(err);
+        return;
+      }
+      try {
+        post.path.should.eql(path);
+        post.content.should.eql(content);
+        readFile(path).asCallback((err, data) => {
+          if (err) {
+            done(err);
+            return;
+          }
+          try {
+            data.should.eql(content);
+            unlink(path).asCallback(done);
+          } catch (e) {
+            done(e);
+          }
+        });
+      } catch (e) {
+        done(e);
+      }
     });
   });
 
@@ -428,8 +456,8 @@ describe('Post', () => {
     const paths = [join(hexo.source_dir, '_posts', 'Hello-World-1.md')];
 
     return Promise.all([
-      post.create({title: 'Hello World', layout: 'draft'}),
-      post.create({title: 'Hello World'})
+      post.create({ title: 'Hello World', layout: 'draft' }),
+      post.create({ title: 'Hello World' })
     ]).then(data => {
       paths.push(data[1].path);
 
@@ -446,8 +474,8 @@ describe('Post', () => {
     const path = join(hexo.source_dir, '_posts', 'Hello-World.md');
 
     return Promise.all([
-      post.create({title: 'Hello World', layout: 'draft'}),
-      post.create({title: 'Hello World'})
+      post.create({ title: 'Hello World', layout: 'draft' }),
+      post.create({ title: 'Hello World' })
     ]).then(data => post.publish({
       slug: 'Hello-World'
     }, true)).then(data => {
@@ -510,10 +538,7 @@ describe('Post', () => {
       '---'
     ].join('\n') + '\n';
 
-    const callback = spy(post => {
-      post.path.should.eql(path);
-      post.content.should.eql(content);
-    });
+    const callback = spy();
 
     return post.create({
       title: 'Hello World',
@@ -526,6 +551,7 @@ describe('Post', () => {
       }, callback);
     }).then(post => {
       callback.calledOnce.should.be.true;
+      callback.calledWithMatch(null, { path, content }).should.true;
 
       return Promise.all([
         exists(draftPath),
@@ -547,7 +573,7 @@ describe('Post', () => {
   }).then(data => post.publish({
     slug: 'foo'
   })).then(data => {
-    const meta = frontMatter(data.content);
+    const meta = yfm(data.content);
     meta.tags.should.eql(['tag', 'test']);
     return unlink(data.path);
   }));
@@ -600,7 +626,7 @@ describe('Post', () => {
     });
   });
 
-  it('render() - skip render phase if it\'s swig file', () => {
+  it('render() - skip render phase if it\'s nunjucks file', () => {
     const content = [
       '{% quote Hello World %}',
       'quote content',
@@ -609,7 +635,7 @@ describe('Post', () => {
 
     return post.render(null, {
       content,
-      engine: 'swig'
+      engine: 'njk'
     }).then(data => {
       data.content.trim().should.eql([
         '<blockquote><p>quote content</p>\n',
@@ -618,7 +644,7 @@ describe('Post', () => {
     });
   });
 
-  it('render() - escaping swig blocks with similar names', () => {
+  it('render() - escaping nunjucks blocks with similar names', () => {
     const code = 'alert("Hello world")';
     const highlighted = highlight(code);
 
@@ -643,23 +669,21 @@ describe('Post', () => {
     });
   });
 
-  it('render() - recover escaped swig blocks which is html escaped', () => {
-    const content = '`{% raw %}{{ test }}{% endraw %}`';
+  it('render() - recover escaped nunjucks blocks which is html escaped', () => {
+    const content = '`{% raw %}{{ test }}{% endraw %}`, {%raw%}{{ test }}{%endraw%}';
 
     return post.render(null, {
       content,
       engine: 'markdown'
     }).then(data => {
-      data.content.trim().should.eql('<p><code>{{ test }}</code></p>');
+      data.content.trim().should.eql('<p><code>{{ test }}</code>, {{ test }}</p>');
     });
   });
 
-  it('render() - recover escaped swig blocks which is html escaped before post_render', () => {
+  it.skip('render() - recover escaped nunjucks blocks which is html escaped before post_render', () => {
     const content = '`{% raw %}{{ test }}{% endraw %}`';
 
-    const filter = spy(result => {
-      result.trim().should.eql('<p><code>{{ test }}</code></p>');
-    });
+    const filter = spy();
 
     hexo.extend.filter.register('after_render:html', filter);
 
@@ -668,6 +692,7 @@ describe('Post', () => {
       engine: 'markdown'
     }).then(data => {
       filter.calledOnce.should.be.true;
+      filter.firstCall.args[0].trim().should.eql('<p><code>{{ test }}</code></p>');
       hexo.extend.filter.unregister('after_render:html', filter);
     });
   });
@@ -932,4 +957,216 @@ describe('Post', () => {
     });
   });
 
+  // test for Issue #3346
+  it('render() - swig tag inside backtick code block', async () => {
+    const content = fixture.content_for_issue_3346;
+
+    const data = await post.render(null, {
+      content,
+      engine: 'markdown'
+    });
+
+    data.content.trim().should.eql(fixture.expected_for_issue_3346);
+  });
+
+  // test for https://github.com/hexojs/hexo/pull/4171#issuecomment-594412367
+  it('render() - markdown content right after swig tag', async () => {
+    const content = [
+      '{% pullquote warning %}',
+      'Text',
+      '{% endpullquote %}',
+      '# Title 0',
+      '{% pullquote warning %}',
+      'Text',
+      '{% endpullquote %}',
+      '{% pullquote warning %}',
+      'Text',
+      '{% endpullquote %}',
+      '# Title 1',
+      '{% pullquote warning %}',
+      'Text',
+      '{% endpullquote %}',
+      '{% pullquote warning %}Text{% endpullquote %}',
+      '# Title 2',
+      '{% pullquote warning %}Text{% endpullquote %}',
+      '{% pullquote warning %}Text{% endpullquote %}',
+      '# Title 3',
+      '{% pullquote warning %}Text{% endpullquote %}'
+    ].join('\n');
+
+    const data = await post.render(null, {
+      content,
+      engine: 'markdown'
+    });
+
+    // We only to make sure markdown content is rendered correctly
+    data.content.trim().should.include('<h1 id="Title-0"><a href="#Title-0" class="headerlink" title="Title 0"></a>Title 0</h1>');
+    data.content.trim().should.include('<h1 id="Title-1"><a href="#Title-1" class="headerlink" title="Title 1"></a>Title 1</h1>');
+    data.content.trim().should.include('<h1 id="Title-2"><a href="#Title-2" class="headerlink" title="Title 2"></a>Title 2</h1>');
+    data.content.trim().should.include('<h1 id="Title-3"><a href="#Title-3" class="headerlink" title="Title 3"></a>Title 3</h1>');
+  });
+
+  // test for Issue #3259
+  // https://github.com/hexojs/hexo/issues/3259
+  it('render() - "{{" & "}}" inside inline code', async () => {
+    const content = 'In Go\'s templates, blocks look like this: `{{block "template name" .}} (content) {{end}}`.';
+
+    const data = await post.render(null, {
+      content,
+      engine: 'markdown'
+    });
+
+    data.content.trim().should.eql(`<p>In Go’s templates, blocks look like this: <code>${escapeSwigTag('{{block "template name" .}} (content) {{end}}')}</code>.</p>`);
+  });
+
+  // test for https://github.com/hexojs/hexo/issues/3346#issuecomment-595497849
+  it('render() - swig var inside inline code', async () => {
+    const content = '`{{ 1 + 1 }}` {{ 1 + 1 }}';
+
+    const data = await post.render(null, {
+      content,
+      engine: 'markdown'
+    });
+
+    data.content.trim().should.eql(`<p><code>${escapeSwigTag('{{ 1 + 1 }}')}</code> 2</p>`);
+  });
+
+  // https://github.com/hexojs/hexo/issues/4317
+  it('render() - issue #4317', async () => {
+    const content = fixture.content_for_issue_4317;
+    hexo.config.highlight.enable = false;
+
+    const data = await post.render(null, {
+      content,
+      engine: 'markdown'
+    });
+
+    data.content.trim().should.contains(`<pre><code class="sh">${escapeHTML('echo "Hi"')}</code></pre>`);
+    data.content.trim().should.contains('<script src="//gist.github.com/gist_id.js"></script>');
+    data.content.trim().should.contains('<script src="//gist.github.com/gist_id_2.js"></script>');
+
+    // Re-anable highlight for other tests
+    hexo.config.highlight.enable = true;
+  });
+
+  // https://github.com/hexojs/hexo/issues/3543
+  it('render() - issue #3543', async () => {
+    // Adopted from https://github.com/hexojs/hexo/pull/3459/files
+    const js = 'alert("Foo")';
+    const html = '<div></div>';
+    const highlightedJs = highlight(js, { lang: 'js' });
+    const highlightedHtml = highlight(html, { lang: 'html' });
+
+    const content = [
+      '```js',
+      js,
+      '```',
+      '{% raw %}',
+      '<p>Foo</p>',
+      '{% endraw %}',
+      '```html',
+      html,
+      '```'
+    ].join('\n');
+
+    const data = await post.render(null, {
+      content,
+      engine: 'markdown'
+    });
+
+    data.content.trim().should.contains(highlightedJs);
+    data.content.trim().should.contains('<p>Foo</p>');
+    data.content.trim().should.not.contains('{% raw %}');
+    data.content.trim().should.not.contains('{% endraw %}');
+    data.content.trim().should.contains(highlightedHtml);
+  });
+
+  it('render() - escape & recover muilt {% raw %} and backticks', async () => {
+    const content = [
+      '`{{ 1 + 1 }}` {{ 1 + 2 }} `{{ 2 + 2 }}`',
+      'Text',
+      '{% raw %}',
+      'Raw 1',
+      '{% endraw %}',
+      'Another Text',
+      '{% raw %}',
+      'Raw 2',
+      '{% endraw %}'
+    ].join('\n');
+
+    const data = await post.render(null, {
+      content,
+      engine: 'markdown'
+    });
+
+    data.content.trim().should.eql([
+      `<p><code>${escapeSwigTag('{{ 1 + 1 }}')}</code> 3 <code>${escapeSwigTag('{{ 2 + 2 }}')}</code><br>Text</p>`,
+      '',
+      'Raw 1',
+      '',
+      '<p>Another Text</p>',
+      '',
+      'Raw 2'
+    ].join('\n'));
+  });
+
+  // https://github.com/hexojs/hexo/issues/4087
+  it('render() - issue #4087', async () => {
+    // Adopted from https://github.com/hexojs/hexo/issues/4087#issuecomment-596999486
+    const content = [
+      '## Quote',
+      '',
+      '    {% pullquote %}foo foo foo{% endpullquote %}',
+      '',
+      'test001',
+      '',
+      '{% pullquote %}bar bar bar{% endpullquote %}',
+      '',
+      '## Insert',
+      '',
+      '    {% youtube https://example.com/demo.mp4 %}',
+      '',
+      'test002',
+      '',
+      '{% youtube https://example.com/sample.mp4 %}'
+    ].join('\n');
+
+    const data = await post.render(null, {
+      content,
+      engine: 'markdown'
+    });
+
+    // indented pullquote
+    data.content.trim().should.contains(`<pre><code>${escapeSwigTag('{% pullquote %}foo foo foo{% endpullquote %}')}</code></pre>`);
+    data.content.trim().should.contains('<p>test001</p>');
+    // pullquote tag
+    data.content.trim().should.contains('<blockquote class="pullquote"><p>bar bar bar</p>\n</blockquote>');
+    data.content.trim().should.contains('<p>test002</p>');
+    // indented youtube tag
+    data.content.trim().should.contains(`<pre><code>${escapeSwigTag('{% youtube https://example.com/demo.mp4 %}')}</code></pre>`);
+    // youtube tag
+    data.content.trim().should.contains('<div class="video-container"><iframe src="https://www.youtube.com/embed/https://example.com/sample.mp4" frameborder="0" loading="lazy" allowfullscreen></iframe></div>');
+  });
+
+  // https://github.com/hexojs/hexo/issues/4385
+  it('render() - no double escape in code block (issue #4385)', async () => {
+    const content = [
+      '```rust',
+      'fn main() {',
+      '    println!("Hello, world!");',
+      '}',
+      '```'
+    ].join('\n');
+
+    const data = await post.render(null, {
+      content,
+      engine: 'markdown'
+    });
+
+    data.content.should.contains('<figure class="highlight rust">');
+    data.content.should.contains('&#123;');
+    data.content.should.contains('&#125;');
+    data.content.should.not.contains('&amp;#123');
+    data.content.should.not.contains('&amp;#125');
+  });
 });

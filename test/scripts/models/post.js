@@ -1,6 +1,5 @@
 'use strict';
 
-const { spy } = require('sinon');
 const { join, sep } = require('path');
 const Promise = require('bluebird');
 const { full_url_for } = require('hexo-util');
@@ -29,13 +28,13 @@ describe('Post', () => {
     }).then(data => {
       data.title.should.eql('');
       data.date.valueOf().should.gte(now);
-      data.updated.valueOf().should.gte(now);
       data.comments.should.be.true;
       data.layout.should.eql('post');
       data._content.should.eql('');
       data.link.should.eql('');
       data.raw.should.eql('');
       data.published.should.be.true;
+      should.not.exist(data.updated);
       should.not.exist(data.content);
       should.not.exist(data.excerpt);
       should.not.exist(data.more);
@@ -45,24 +44,20 @@ describe('Post', () => {
   });
 
   it('source - required', () => {
-    const errorCallback = spy(err => {
+    return Post.insert({}).then(() => {
+      should.fail('Return value must be rejected');
+    }, err => {
       err.should.have.property('message', '`source` is required!');
-    });
-
-    return Post.insert({}).catch(errorCallback).finally(() => {
-      errorCallback.calledOnce.should.be.true;
     });
   });
 
   it('slug - required', () => {
-    const errorCallback = spy(err => {
-      err.should.have.property('message', '`slug` is required!');
-    });
-
     return Post.insert({
       source: 'foo.md'
-    }).catch(errorCallback).finally(() => {
-      errorCallback.calledOnce.should.be.true;
+    }).then(() => {
+      should.fail('Return value must be rejected');
+    }, err => {
+      err.should.have.property('message', '`slug` is required!');
     });
   });
 

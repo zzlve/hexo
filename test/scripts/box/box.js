@@ -4,7 +4,7 @@ const { join, sep } = require('path');
 const { appendFile, mkdir, mkdirs, rename, rmdir, stat, unlink, writeFile } = require('hexo-fs');
 const Promise = require('bluebird');
 const { hash, Pattern } = require('hexo-util');
-const { spy } = require('sinon');
+const { spy, match, assert: sinonAssert } = require('sinon');
 
 describe('Box', () => {
   const Hexo = require('../../../lib/hexo');
@@ -110,9 +110,7 @@ describe('Box', () => {
     await writeFile(path, 'a');
     await box.process();
 
-    const file = processor.args[0][0];
-    file.type.should.eql('create');
-    file.path.should.eql(name);
+    sinonAssert.calledWithMatch(processor, { type: 'create', path: name });
 
     await rmdir(box.base);
   });
@@ -136,9 +134,7 @@ describe('Box', () => {
     ]);
     await box.process();
 
-    const file = processor.args[0][0];
-    file.type.should.eql('update');
-    file.path.should.eql(name);
+    sinonAssert.calledWithMatch(processor, { type: 'update', path: name });
 
     await rmdir(box.base);
   });
@@ -161,9 +157,7 @@ describe('Box', () => {
     });
     await box.process();
 
-    const file = processor.args[0][0];
-    file.type.should.eql('skip');
-    file.path.should.eql(name);
+    sinonAssert.calledWithMatch(processor, { type: 'skip', path: name });
 
     await rmdir(box.base);
   });
@@ -186,9 +180,7 @@ describe('Box', () => {
     });
     await box.process();
 
-    const file = processor.args[0][0];
-    file.type.should.eql('skip');
-    file.path.should.eql(name);
+    sinonAssert.calledWithMatch(processor, { type: 'skip', path: name });
 
     await rmdir(box.base);
   });
@@ -211,9 +203,7 @@ describe('Box', () => {
     });
     await box.process();
 
-    const file = processor.args[0][0];
-    file.type.should.eql('skip');
-    file.path.should.eql(name);
+    sinonAssert.calledWithMatch(processor, { type: 'skip', path: name });
 
     await rmdir(box.base);
   });
@@ -222,10 +212,7 @@ describe('Box', () => {
     const box = newBox('test');
     const cacheId = 'test/a.txt';
 
-    const processor = spy(file => {
-      file.type.should.eql('delete');
-    });
-
+    const processor = spy();
     box.addProcessor(processor);
 
     await Promise.all([
@@ -236,6 +223,7 @@ describe('Box', () => {
     ]);
     await box.process();
 
+    sinonAssert.calledWith(processor, match.has('type', 'delete'));
     processor.calledOnce.should.be.true;
 
     await rmdir(box.base);
@@ -245,15 +233,14 @@ describe('Box', () => {
     const box = newBox('test');
     const path = join(box.base, 'posts', '123456');
 
-    const processor = spy(file => {
-      file.params.id.should.eql('123456');
-    });
+    const processor = spy();
 
     box.addProcessor('posts/:id', processor);
 
     await writeFile(path, 'a');
     await box.process();
 
+    sinonAssert.calledWith(processor, match.has('params', match.has('id', '123456')));
     processor.calledOnce.should.be.true;
 
     await rmdir(box.base);
@@ -314,45 +301,6 @@ describe('Box', () => {
     await rmdir(box.base);
   });
 
-  it('process() - skip node_modules of theme by default', async () => {
-    const box = newBox('test', { ignore: null });
-    const data = {};
-
-    box.addProcessor(file => {
-      data[file.path] = file;
-    });
-
-    await Promise.all([
-      writeFile(join(box.base, 'foo.txt'), 'foo'),
-      writeFile(join(box.base, 'themes', 'bar', 'node_modules', 'bar_library', 'bar.js'), 'themes')
-    ]);
-    await box.process();
-
-    data.should.have.all.keys(['foo.txt']);
-
-    await rmdir(box.base);
-  });
-
-  it('process() - always skip node_modules of theme', async () => {
-    const box = newBox('test', { ignore: '**/ignore_me' });
-    const data = {};
-
-    box.addProcessor(file => {
-      data[file.path] = file;
-    });
-
-    await Promise.all([
-      writeFile(join(box.base, 'foo.txt'), 'foo'),
-      writeFile(join(box.base, 'ignore_me', 'bar.txt'), 'ignore_me'),
-      writeFile(join(box.base, 'themes', 'bar', 'node_modules', 'bar_library', 'bar.js'), 'themes')
-    ]);
-    await box.process();
-
-    data.should.have.all.keys(['foo.txt']);
-
-    await rmdir(box.base);
-  });
-
   it('watch() - create', async () => {
     const box = newBox('test');
     const path = 'a.txt';
@@ -366,12 +314,12 @@ describe('Box', () => {
     box.isWatching().should.be.true;
     await Promise.delay(500);
 
-    const file = processor.args[0][0];
-
-    file.source.should.eql(src);
-    file.path.should.eql(path);
-    file.type.should.eql('create');
-    file.params.should.eql({});
+    sinonAssert.calledWithMatch(processor.firstCall, {
+      source: src,
+      path: path,
+      type: 'create',
+      params: {}
+    });
 
     box.unwatch();
     await rmdir(box.base);
@@ -382,7 +330,7 @@ describe('Box', () => {
     const path = 'a.txt';
     const src = join(box.base, path);
     const cacheId = 'test/' + path;
-    const Cache = box.Cache;
+    const { Cache } = box;
     const processor = spy();
 
     box.addProcessor(processor);
@@ -395,12 +343,12 @@ describe('Box', () => {
     await appendFile(src, 'b');
     await Promise.delay(500);
 
-    const file = processor.lastCall.args[0];
-
-    file.source.should.eql(src);
-    file.path.should.eql(path);
-    file.type.should.eql('update');
-    file.params.should.eql({});
+    sinonAssert.calledWithMatch(processor.lastCall, {
+      source: src,
+      path: path,
+      type: 'update',
+      params: {}
+    });
 
     box.unwatch();
     await rmdir(box.base);
@@ -411,7 +359,7 @@ describe('Box', () => {
     const path = 'a.txt';
     const src = join(box.base, path);
     const cacheId = 'test/' + path;
-    const Cache = box.Cache;
+    const { Cache } = box;
     const processor = spy();
 
     box.addProcessor(processor);
@@ -424,12 +372,12 @@ describe('Box', () => {
     await unlink(src);
     await Promise.delay(500);
 
-    const file = processor.lastCall.args[0];
-
-    file.source.should.eql(src);
-    file.path.should.eql(path);
-    file.type.should.eql('delete');
-    file.params.should.eql({});
+    sinonAssert.calledWithMatch(processor.lastCall, {
+      source: src,
+      path: path,
+      type: 'delete',
+      params: {}
+    });
 
     box.unwatch();
     await rmdir(box.base);
@@ -442,7 +390,7 @@ describe('Box', () => {
     const newPath = 'b.txt';
     const newSrc = join(box.base, newPath);
     const cacheId = 'test/' + path;
-    const Cache = box.Cache;
+    const { Cache } = box;
     const processor = spy();
 
     box.addProcessor(processor);
@@ -455,11 +403,7 @@ describe('Box', () => {
     await rename(src, newSrc);
     await Promise.delay(500);
 
-    const lastTwoCalls = processor.args.slice(processor.args.length - 2, processor.args.length);
-
-    lastTwoCalls.forEach(args => {
-      const file = args[0];
-
+    for (const [file] of processor.args.slice(-2)) {
       switch (file.type) {
         case 'create':
           file.source.should.eql(newSrc);
@@ -471,7 +415,7 @@ describe('Box', () => {
           file.path.should.eql(path);
           break;
       }
-    });
+    }
 
     box.unwatch();
     await rmdir(box.base);
@@ -484,7 +428,7 @@ describe('Box', () => {
     const newPath = 'b/b.txt';
     const newSrc = join(box.base, newPath);
     const cacheId = 'test/' + path;
-    const Cache = box.Cache;
+    const { Cache } = box;
     const processor = spy();
 
     box.addProcessor(processor);
@@ -497,11 +441,7 @@ describe('Box', () => {
     await rename(join(box.base, 'a'), join(box.base, 'b'));
     await Promise.delay(500);
 
-    const lastTwoCalls = processor.args.slice(processor.args.length - 2, processor.args.length);
-
-    lastTwoCalls.forEach(args => {
-      const file = args[0];
-
+    for (const [file] of processor.args.slice(-2)) {
       switch (file.type) {
         case 'create':
           file.source.should.eql(newSrc);
@@ -513,21 +453,21 @@ describe('Box', () => {
           file.path.should.eql(path);
           break;
       }
-    });
+    }
 
     box.unwatch();
     await rmdir(box.base);
   });
 
   it('watch() - update with simple "ignore" option', async () => {
-    const box = newBox('test', {ignore: '**/ignore_me'});
+    const box = newBox('test', {ignore: '**/ignore_me/**'});
     const path1 = 'a.txt';
     const path2 = 'b.txt';
     const src1 = join(box.base, path1);
     const src2 = join(box.base, 'ignore_me', path2);
     const cacheId1 = 'test/' + path1;
     const cacheId2 = 'test/ignore_me/' + path2;
-    const Cache = box.Cache;
+    const { Cache } = box;
     const processor = spy();
 
     box.addProcessor(processor);
@@ -546,10 +486,12 @@ describe('Box', () => {
 
     const file = processor.lastCall.args[0];
 
-    file.source.should.eql(src1);
-    file.path.should.eql(path1);
-    file.type.should.eql('update');
-    file.params.should.eql({});
+    file.should.deep.include({
+      source: src1,
+      path: path1,
+      type: 'update',
+      params: {}
+    });
 
     await appendFile(src2, 'bbb');
     await Promise.delay(500);
@@ -562,7 +504,7 @@ describe('Box', () => {
   });
 
   it('watch() - update with complex "ignore" option', async () => {
-    const box = newBox('test', {ignore: ['**/ignore_me', '**/ignore_me_too.txt']});
+    const box = newBox('test', {ignore: ['**/ignore_me/**', '**/ignore_me_too.txt']});
     const path1 = 'a.txt';
     const path2 = 'b.txt';
     const path3 = 'ignore_me_too.txt';
@@ -572,7 +514,7 @@ describe('Box', () => {
     const cacheId1 = 'test/' + path1;
     const cacheId2 = 'test/ignore_me/' + path2;
     const cacheId3 = 'test/' + path3;
-    const Cache = box.Cache;
+    const { Cache } = box;
     const processor = spy();
 
     box.addProcessor(processor);
@@ -595,22 +537,22 @@ describe('Box', () => {
 
     const file = processor.lastCall.args[0];
 
-    file.source.should.eql(src1);
-    file.path.should.eql(path1);
-    file.type.should.eql('update');
-    file.params.should.eql({});
+    file.should.deep.include({
+      source: src1,
+      path: path1,
+      type: 'update',
+      params: {}
+    });
 
     await appendFile(src2, 'bbb');
     await Promise.delay(500);
 
-    const file2 = processor.lastCall.args[0];
-    file2.should.eql(file); // not changed
+    processor.lastCall.args[0].should.eql(file); // not changed
 
     await appendFile(src3, 'ccc');
     await Promise.delay(500);
 
-    const file3 = processor.lastCall.args[0];
-    file3.should.eql(file); // not changed
+    processor.lastCall.args[0].should.eql(file); // not changed
 
     box.unwatch();
     await rmdir(box.base);
@@ -620,12 +562,12 @@ describe('Box', () => {
     const box = newBox();
 
     await box.watch();
-    const errorCallback = spy(err => {
-      err.should.have.property('message', 'Watcher has already started.');
-    });
 
-    await box.watch().catch(errorCallback);
-    errorCallback.calledOnce.should.be.true;
+    await box.watch().then(() => {
+      should.fail('Return value must be rejected');
+    }, err => {
+      err.should.property('message', 'Watcher has already started.');
+    });
 
     box.unwatch();
   });
@@ -681,15 +623,8 @@ describe('Box', () => {
   it('processBefore & processAfter events', async () => {
     const box = newBox('test');
 
-    const beforeSpy = spy(file => {
-      file.type.should.eql('create');
-      file.path.should.eql('a.txt');
-    });
-
-    const afterSpy = spy(file => {
-      file.type.should.eql('create');
-      file.path.should.eql('a.txt');
-    });
+    const beforeSpy = spy();
+    const afterSpy = spy();
 
     box.on('processBefore', beforeSpy);
     box.on('processAfter', afterSpy);
@@ -697,6 +632,8 @@ describe('Box', () => {
     await writeFile(join(box.base, 'a.txt'), 'a');
     await box.process();
 
+    sinonAssert.calledWithMatch(beforeSpy, { type: 'create', path: 'a.txt' });
+    sinonAssert.calledWithMatch(afterSpy, { type: 'create', path: 'a.txt' });
     beforeSpy.calledOnce.should.be.true;
     afterSpy.calledOnce.should.be.true;
 

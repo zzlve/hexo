@@ -1,34 +1,22 @@
-os:
-  - linux
+os: linux
 
 language: node_js
-
-addons:
-  apt:
-    packages:
-    - time
 
 cache:
   npm: true
 
 node_js:
-  - "8"
   - "10"
   - "12"
-  - "13"
+  - "14"
+
+before_script:
+  - chmod +x ./test/profiling.sh
 
 script:
-  - if [[ $TRAVIS_OS_NAME == "linux" ]]; then
-      npm run eslint;
-    fi
-  - npm run test-cov
-  - if [[ $TRAVIS_OS_NAME == "linux" ]]; then
-      ./test/benchmark.sh;
-    fi
-
-after_script:
-  - npm install coveralls
-  - nyc report --reporter=text-lcov | coveralls
+  - echo "============== Hexo Benchmark =============="
+  - node ./test/benchmark.js
+  - ./test/profiling.sh
 
 deploy:
   provider: surge

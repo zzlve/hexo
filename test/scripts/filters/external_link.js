@@ -1,9 +1,16 @@
 'use strict';
 
+const decache = require('decache');
+
 describe('External link', () => {
   const Hexo = require('../../../lib/hexo');
   const hexo = new Hexo();
-  const externalLink = require('../../../lib/plugins/filter/after_render/external_link').bind(hexo);
+  let externalLink;
+
+  beforeEach(() => {
+    decache('../../../lib/plugins/filter/after_render/external_link');
+    externalLink = require('../../../lib/plugins/filter/after_render/external_link').bind(hexo);
+  });
 
   hexo.config = {
     url: 'https://example.com',
@@ -88,36 +95,6 @@ describe('External link', () => {
     ].join('\n'));
   });
 
-  it('old option - false', () => {
-    const content = 'foo'
-      + '<a href="https://hexo.io/">Hexo</a>'
-      + 'bar';
-
-    hexo.config.external_link = false;
-
-    should.not.exist(externalLink(content));
-    hexo.config.external_link = {
-      enable: true,
-      field: 'site',
-      exclude: ''
-    };
-  });
-
-  it('old option - true', () => {
-    const content = '<a href="https://hexo.io/">Hexo</a>';
-
-    hexo.config.external_link = true;
-
-    const result = externalLink(content);
-    result.should.eql('<a target="_blank" rel="noopener" href="https://hexo.io/">Hexo</a>');
-
-    hexo.config.external_link = {
-      enable: true,
-      field: 'site',
-      exclude: ''
-    };
-  });
-
   it('exclude - string', () => {
     const content = [
       '<a href="https://foo.com/">Hexo</a>',
@@ -162,7 +139,13 @@ describe('External link', () => {
 describe('External link - post', () => {
   const Hexo = require('../../../lib/hexo');
   const hexo = new Hexo();
-  const externalLink = require('../../../lib/plugins/filter/after_post_render/external_link').bind(hexo);
+
+  let externalLink;
+
+  beforeEach(() => {
+    decache('../../../lib/plugins/filter/after_post_render/external_link');
+    externalLink = require('../../../lib/plugins/filter/after_post_render/external_link').bind(hexo);
+  });
 
   hexo.config = {
     url: 'https://example.com',

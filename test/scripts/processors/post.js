@@ -507,7 +507,88 @@ describe('post', () => {
     unlink(file.source);
   });
 
-  it('post - use date when no updated and use_date_for_updated', async () => {
+  it('post - use the date for updated if updated_option = date', async () => {
+    const body = [
+      'date: 2011-4-5 14:19:19',
+      'title: "Hello world"',
+      '---'
+    ].join('\n');
+
+    const file = newFile({
+      path: 'foo.html',
+      published: true,
+      type: 'create',
+      renderable: true
+    });
+
+    hexo.config.updated_option = 'date';
+
+    await writeFile(file.source, body);
+    const stats = await file.stat();
+    await process(file);
+    const post = Post.findOne({source: file.path});
+
+    post.updated.toDate().setMilliseconds(0).should.eql(post.date.toDate().setMilliseconds(0));
+    post.updated.toDate().setMilliseconds(0).should.not.eql(stats.mtime.setMilliseconds(0));
+
+    post.remove();
+    unlink(file.source);
+  });
+
+  it('post - use the status of the source file if updated_option = mtime', async () => {
+    const body = [
+      'date: 2011-4-5 14:19:19',
+      'title: "Hello world"',
+      '---'
+    ].join('\n');
+
+    const file = newFile({
+      path: 'foo.html',
+      published: true,
+      type: 'create',
+      renderable: true
+    });
+
+    hexo.config.updated_option = 'mtime';
+
+    await writeFile(file.source, body);
+    const stats = await file.stat();
+    await process(file);
+    const post = Post.findOne({source: file.path});
+
+    post.updated.toDate().setMilliseconds(0).should.eql(stats.mtime.setMilliseconds(0));
+    post.updated.toDate().setMilliseconds(0).should.not.eql(post.date.toDate().setMilliseconds(0));
+
+    post.remove();
+    unlink(file.source);
+  });
+
+  it('post - updated shouldn\'t exists if updated_option = empty', async () => {
+    const body = [
+      'title: "Hello world"',
+      '---'
+    ].join('\n');
+
+    const file = newFile({
+      path: 'foo.html',
+      published: true,
+      type: 'create',
+      renderable: true
+    });
+
+    hexo.config.updated_option = 'empty';
+
+    await writeFile(file.source, body);
+    await process(file);
+    const post = Post.findOne({source: file.path});
+
+    should.not.exist(post.updated);
+
+    post.remove();
+    unlink(file.source);
+  });
+
+  it('post - use use_date_for_updated as a fallback', async () => {
     const body = [
       'title: "Hello world"',
       '---'
@@ -529,6 +610,35 @@ describe('post', () => {
 
     post.date.toDate().setMilliseconds(0).should.eql(stats.birthtime.setMilliseconds(0));
     post.updated.toDate().setMilliseconds(0).should.eql(stats.birthtime.setMilliseconds(0));
+
+    post.remove();
+    unlink(file.source);
+  });
+
+  it('post - ignore updated_option when use_date_for_updated is set', async () => {
+    const body = [
+      'date: 2011-4-5 14:19:19',
+      'title: "Hello world"',
+      '---'
+    ].join('\n');
+
+    const file = newFile({
+      path: 'foo.html',
+      published: true,
+      type: 'create',
+      renderable: true
+    });
+
+    hexo.config.use_date_for_updated = true;
+    hexo.config.updated_option = 'mtime';
+
+    await writeFile(file.source, body);
+    const stats = await file.stat();
+    await process(file);
+    const post = Post.findOne({source: file.path});
+
+    post.updated.toDate().setMilliseconds(0).should.eql(post.date.toDate().setMilliseconds(0));
+    post.updated.toDate().setMilliseconds(0).should.not.eql(stats.mtime.setMilliseconds(0));
 
     post.remove();
     unlink(file.source);
@@ -615,7 +725,6 @@ describe('post', () => {
     unlink(file.source);
   });
 
-
   it('post - link without title and link', async () => {
     const body = '';
 
@@ -630,7 +739,7 @@ describe('post', () => {
     await process(file);
     const post = Post.findOne({source: file.path});
 
-    post.title.should.eql('foo');
+    post.title.should.eql('');
 
     post.remove();
     unlink(file.source);
@@ -716,7 +825,7 @@ describe('post', () => {
   it('post - tag is an alias for tags', async () => {
     const body = [
       'title: "Hello world"',
-      'tags:',
+      'tag:',
       '- foo',
       '- bar',
       '---'
@@ -824,6 +933,42 @@ describe('post', () => {
     await Promise.all([
       unlink(file.source),
       ...assetFiles.map(obj => unlink(obj.path))
+    ]);
+  });
+
+  it('post - post_asset_folder enabled with unpublished posts', async () => {
+    hexo.config.post_asset_folder = true;
+
+    const body = [
+      'title: "Hello world"',
+      'published: false',
+      '---'
+    ].join('\n');
+
+    const file = newFile({
+      path: 'foo.html',
+      published: true,
+      type: 'create',
+      renderable: true
+    });
+
+    const assetId = 'source/_posts/foo/bar.jpg';
+    const assetPath = join(hexo.base_dir, assetId);
+
+    await Promise.all([
+      writeFile(file.source, body),
+      writeFile(assetPath, '')
+    ]);
+    await process(file);
+    const post = Post.findOne({ source: file.path });
+
+    post.published.should.be.false;
+    should.not.exist(PostAsset.findById(assetId));
+    post.remove();
+
+    await Promise.all([
+      unlink(file.source),
+      unlink(assetPath)
     ]);
   });
 
@@ -980,7 +1125,8 @@ describe('post', () => {
     await writeFile(file.source, body);
     await process(file);
     const post = Post.findOne({source: file.path});
-    post.slug.should.eql('foooo');
+
+    post.__permalink.should.eql('foooo');
 
     post.remove();
     unlink(file.source);
